@@ -1,0 +1,122 @@
+(base) ian-martin-ajzenszmidt@ian-martin-ajzenszmidt-CFSZ5-3:~/fibonacci$ nano markovState.py
+(base) ian-martin-ajzenszmidt@ian-martin-ajzenszmidt-CFSZ5-3:~/fibonacci$ python3  markovState.py
+Traceback (most recent call last):
+  File "/home/ian-martin-ajzenszmidt/fibonacci/markovState.py", line 3, in <module>
+    import networkx as nx
+ModuleNotFoundError: No module named 'networkx'
+(base) ian-martin-ajzenszmidt@ian-martin-ajzenszmidt-CFSZ5-3:~/fibonacci$ pip install networkx
+Collecting networkx
+  Downloading networkx-3.5-py3-none-any.whl.metadata (6.3 kB)
+Downloading networkx-3.5-py3-none-any.whl (2.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 20.7 MB/s eta 0:00:00
+Installing collected packages: networkx
+Successfully installed networkx-3.5
+(base) ian-martin-ajzenszmidt@ian-martin-ajzenszmidt-CFSZ5-3:~/fibonacci$ python3  markovState.py
+First-order chain:
+ Sunny → Sunny → Cloudy → Cloudy → Cloudy → Cloudy → Cloudy → Cloudy → Rainy → Snowy → Rainy → Rainy → Rainy → Rainy → Snowy → Sunny → Sunny → Sunny → Cloudy → Rainy → Rainy → Snowy → Snowy → Snowy → Snowy → Cloudy → Cloudy → Sunny → Rainy → Rainy → Cloudy → Sunny → Cloudy → Cloudy → Cloudy → Sunny → Sunny → Sunny → Sunny → Rainy → Rainy → Cloudy → Cloudy → Cloudy → Sunny → Sunny → Sunny → Sunny → Sunny → Sunny → Sunny
+
+Second-order chain:
+ Sunny → Sunny → Sunny → Sunny → Rainy
+
+Estimated transition matrix from first-order chain:
+[[0.71 0.18 0.12 0.  ]
+ [0.25 0.62 0.12 0.  ]
+ [0.   0.18 0.55 0.27]
+ [0.17 0.17 0.17 0.5 ]]
+(base) ian-martin-ajzenszmidt@ian-martin-ajzenszmidt-CFSZ5-3:~/fibonacci$ cat  markovState.py
+import numpy as np
+import matplotlib.pyplot as plt
+import networkx as nx
+from collections import Counter, defaultdict
+
+# --- Define states and transition matrix ---
+states = ['Sunny', 'Cloudy', 'Rainy', 'Snowy']
+state_to_index = {s: i for i, s in enumerate(states)}
+
+P = np.array([
+    [0.7, 0.2, 0.1, 0.0],  # Sunny
+    [0.3, 0.4, 0.2, 0.1],  # Cloudy
+    [0.2, 0.3, 0.4, 0.1],  # Rainy
+    [0.1, 0.1, 0.2, 0.6],  # Snowy
+])
+
+# --- First-order simulation ---
+def simulate_first_order(P, states, start, steps):
+    chain = [start]
+    curr = start
+    for _ in range(steps):
+        i = state_to_index[curr]
+        curr = np.random.choice(states, p=P[i])
+        chain.append(curr)
+    return chain
+
+np.random.seed(0)
+chain1 = simulate_first_order(P, states, 'Sunny', 50)
+print("First-order chain:\n", " → ".join(chain1))
+
+# --- Frequency plot ---
+counts = Counter(chain1)
+plt.figure(figsize=(6,4))
+plt.bar(counts.keys(), counts.values(), color='skyblue')
+plt.title('First-Order State Frequencies')
+plt.xlabel('State'); plt.ylabel('Visits')
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout(); plt.show()
+
+# --- Transition graph ---
+def plot_graph(P, states):
+    G = nx.DiGraph()
+    for i, s_from in enumerate(states):
+        for j, s_to in enumerate(states):
+            prob = P[i, j]
+            if prob > 0.05:
+                G.add_edge(s_from, s_to, weight=round(prob, 2))
+    pos = nx.circular_layout(G)
+    edge_labels = nx.get_edge_attributes(G, 'weight')
+    nx.draw(G, pos, with_labels=True, node_size=2000, node_color='lightgreen')
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
+    plt.title("First-Order Transition Diagram")
+    plt.show()
+
+plot_graph(P, states)
+
+# --- Second-order Markov chain ---
+P2 = {
+    ('Sunny', 'Sunny'): {'Sunny': 0.6, 'Cloudy': 0.3, 'Rainy': 0.1},
+    ('Sunny', 'Cloudy'): {'Sunny': 0.3, 'Rainy': 0.5, 'Cloudy': 0.2},
+    ('Cloudy', 'Rainy'): {'Rainy': 0.5, 'Snowy': 0.3, 'Cloudy': 0.2},
+    ('Rainy', 'Snowy'): {'Snowy': 0.8, 'Rainy': 0.2},
+    ('Snowy', 'Snowy'): {'Sunny': 0.2, 'Snowy': 0.8},
+}
+
+def simulate_second_order(P2, start_pair, steps):
+    chain = [start_pair[0], start_pair[1]]
+    curr = start_pair
+    for _ in range(steps):
+        if curr not in P2:
+            break
+        choices, probs = zip(*P2[curr].items())
+        next_state = np.random.choice(choices, p=probs)
+        chain.append(next_state)
+        curr = (curr[1], next_state)
+    return chain
+
+chain2 = simulate_second_order(P2, ('Sunny', 'Sunny'), 30)
+print("\nSecond-order chain:\n", " → ".join(chain2))
+
+# --- Estimate transition matrix from chain1 ---
+def estimate_matrix(chain, states):
+    n = len(states)
+    M = np.zeros((n, n))
+    for a, b in zip(chain[:-1], chain[1:]):
+        i, j = state_to_index[a], state_to_index[b]
+        M[i, j] += 1
+    with np.errstate(divide='ignore', invalid='ignore'):
+        P_est = np.nan_to_num(M / M.sum(axis=1, keepdims=True))
+    return P_est
+
+P_est = estimate_matrix(chain1, states)
+print("\nEstimated transition matrix from first-order chain:")
+print(np.round(P_est, 2))
+(base) ian-martin-ajzenszmidt@ian-martin-ajzenszmidt-CFSZ5-3:~/fibonacci$ 
+
